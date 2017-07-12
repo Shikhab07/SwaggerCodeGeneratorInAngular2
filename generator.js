@@ -6,16 +6,17 @@ var Mustache = require('mustache');
 //var Linter = require('tslint');
 var _ = require('lodash');
 
-var Generator = (function() {
+var Generator = (function () {
 
-    function Generator(swaggerfile, outputpath) {
+    function Generator(swaggerfile, outputpath, outputServiceFileName) {
         this._swaggerfile = swaggerfile;
         this._outputPath = outputpath;
+        this._outputServiceFileName = outputServiceFileName;
     }
 
     Generator.prototype.Debug = false;
 
-    Generator.prototype.initialize = function() {
+    Generator.prototype.initialize = function () {
         this.LogMessage('Reading Swagger file', this._swaggerfile);
         var swaggerfilecontent = fs.readFileSync(this._swaggerfile, 'UTF-8');
 
@@ -36,7 +37,7 @@ var Generator = (function() {
         this.initialized = true;
     }
 
-    Generator.prototype.generateAPIClient = function() {
+    Generator.prototype.generateAPIClient = function () {
         if (this.initialized !== true)
             this.initialize();
 
@@ -47,20 +48,22 @@ var Generator = (function() {
         this.LogMessage('API client generated successfully');
     };
 
-    Generator.prototype.generateClient = function() {
+    Generator.prototype.generateClient = function () {
         if (this.initialized !== true)
             this.initialize();
 
         // generate main API client class
         this.LogMessage('Rendering template for API');
         var result = this.renderLintAndBeautify(this.templates.class, this.viewModel, this.templates);
-
-        var outfile = this._outputPath + "/" + "apiClientService.ts";
+        if (this._outputServiceFileName === undefined) {
+            this._outputServiceFileName = 'apiClientService';
+        }
+        var outfile = this._outputPath + "/" + this._outputServiceFileName + ".ts";
         this.LogMessage('Creating output file', outfile);
         fs.writeFileSync(outfile, result, 'utf-8')
     };
 
-    Generator.prototype.generateModels = function() {
+    Generator.prototype.generateModels = function () {
         var that = this;
 
         if (this.initialized !== true)
@@ -72,7 +75,7 @@ var Generator = (function() {
             fs.mkdirSync(outputdir);
 
         // generate API models
-        _.forEach(this.viewModel.definitions, function(definition, defName) {
+        _.forEach(this.viewModel.definitions, function (definition, defName) {
             that.LogMessage('Rendering template for model: ', definition.name);
             var result = that.renderLintAndBeautify(that.templates.model, definition, that.templates);
 
@@ -83,7 +86,7 @@ var Generator = (function() {
         });
     };
 
-    Generator.prototype.generateCommonModelsExportDefinition = function() {
+    Generator.prototype.generateCommonModelsExportDefinition = function () {
         if (this.initialized !== true)
             this.initialize();
 
@@ -101,7 +104,7 @@ var Generator = (function() {
         fs.writeFileSync(outfile, result, 'utf-8')
     };
 
-    Generator.prototype.renderLintAndBeautify = function(tempalte, model) {
+    Generator.prototype.renderLintAndBeautify = function (tempalte, model) {
 
         // Render *****
         var result = Mustache.render(tempalte, model);
@@ -121,7 +124,7 @@ var Generator = (function() {
         return result;
     }
 
-    Generator.prototype.createMustacheViewModel = function() {
+    Generator.prototype.createMustacheViewModel = function () {
         var that = this;
         var swagger = this.swaggerParsed;
         var authorizedMethods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'];
@@ -130,21 +133,22 @@ var Generator = (function() {
             description: swagger.info.description,
             isSecure: swagger.securityDefinitions !== undefined,
             swagger: swagger,
+            serviceName:this._outputServiceFileName,
             domain: (swagger.schemes && swagger.schemes.length > 0 && swagger.host && swagger.basePath) ? swagger.schemes[0] + '://' + swagger.host + swagger.basePath : '',
             methods: [],
             definitions: []
         };
 
-        _.forEach(swagger.paths, function(api, path) {
+        _.forEach(swagger.paths, function (api, path) {
             var globalParams = [];
 
-            _.forEach(api, function(op, m) {
+            _.forEach(api, function (op, m) {
                 if (m.toLowerCase() === 'parameters') {
                     globalParams = op;
                 }
             });
 
-            _.forEach(api, function(op, m) {
+            _.forEach(api, function (op, m) {
                 if (authorizedMethods.indexOf(m.toUpperCase()) === -1) {
                     return;
                 }
@@ -168,7 +172,7 @@ var Generator = (function() {
                     summaryLines: summaryLines,
                     isSecure: swagger.security !== undefined || op.security !== undefined,
                     parameters: [],
-                    hasJsonResponse: _.some(_.defaults([], swagger.produces, op.produces), function(response) { // TODO PREROBIT
+                    hasJsonResponse: _.some(_.defaults([], swagger.produces, op.produces), function (response) { // TODO PREROBIT
                         return response.indexOf('/json') != -1;
                     })
                 };
@@ -180,7 +184,7 @@ var Generator = (function() {
 
                 params = params.concat(globalParams);
 
-                _.forEach(params, function(parameter) {
+                _.forEach(params, function (parameter) {
                     // Ignore headers which are injected by proxies & app servers
                     // eg: https://cloud.google.com/appengine/docs/go/requests#Go_Request_headers
 
@@ -236,7 +240,7 @@ var Generator = (function() {
 
         });
 
-        _.forEach(swagger.definitions, function(defin, defVal) {
+        _.forEach(swagger.definitions, function (defin, defVal) {
             var defName = that.camelCase(defVal);
 
             var definition = {
@@ -246,7 +250,7 @@ var Generator = (function() {
                 refsImports: []
             };
 
-            _.forEach(defin.properties, function(propin, propVal) {
+            _.forEach(defin.properties, function (propin, propVal) {
 
                 var property = {
                     name: propVal,
@@ -286,12 +290,12 @@ var Generator = (function() {
         return data;
     }
 
-    Generator.prototype.getRefType = function(refString) {
+    Generator.prototype.getRefType = function (refString) {
         var segments = refString.split('/');
         return segments.length === 3 ? segments[2] : segments[0];
     }
 
-    Generator.prototype.getPathToMethodName = function(m, path) {
+    Generator.prototype.getPathToMethodName = function (m, path) {
         if (path === '/' || path === '')
             return m;
 
@@ -303,7 +307,7 @@ var Generator = (function() {
 
         var segments = cleanPath.split('/').slice(1);
 
-        segments = _.transform(segments, function(result, segment) {
+        segments = _.transform(segments, function (result, segment) {
             if (segment[0] === '{' && segment[segment.length - 1] === '}')
                 segment = 'by' + segment[1].toUpperCase() + segment.substring(2, segment.length - 1);
 
@@ -316,7 +320,7 @@ var Generator = (function() {
     }
 
 
-    Generator.prototype.camelCase = function(text) {
+    Generator.prototype.camelCase = function (text) {
         if (!text)
             return text;
 
@@ -325,21 +329,21 @@ var Generator = (function() {
 
         var tokens = [];
 
-        text.split('-').forEach(function(token, index) {
+        text.split('-').forEach(function (token, index) {
             tokens.push(token[0].toUpperCase() + token.substring(1));
         });
 
         var partialres = tokens.join('');
         tokens = [];
 
-        partialres.split('.').forEach(function(token, index) {
+        partialres.split('.').forEach(function (token, index) {
             tokens.push(token[0].toUpperCase() + token.substring(1));
         });
 
         return tokens.join('');
     }
 
-    Generator.prototype.LogMessage = function(text, param) {
+    Generator.prototype.LogMessage = function (text, param) {
         if (this.Debug)
             console.log(text, param || '');
     }

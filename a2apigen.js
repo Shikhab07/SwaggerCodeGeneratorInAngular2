@@ -14,9 +14,11 @@ var optimist = require('optimist')
   .alias('s', 'source')
   .alias('u', 'url')
   .alias('o', 'outputpath')
+  .alias('a','apiServiceName')
   .describe('s', 'Path to your swagger.json file')
   .describe('u', 'Url of your swagger.json file')
-  .describe('o', 'Path where to store generated files');
+  .describe('o', 'Path where to store generated files')
+  .describe('a', 'Name of the Api client Service');;
 
 var fs = require('fs');
 
@@ -50,7 +52,7 @@ else {
 }
 
 var outputdir = argv.outputpath || './output';
-
+var outputServiceFileName=argv.apiServiceName;
 if (!fs.existsSync(outputdir))
   fs.mkdirSync(outputdir);
 
@@ -72,14 +74,14 @@ if (fromUrl) {
 
       fs.writeFileSync(dest, body, 'utf-8');
 
-      var g = new genRef.Generator(dest, outputdir);
+      var g = new genRef.Generator(dest, outputdir, outputServiceFileName);
       g.Debug = true;
       g.generateAPIClient();
     });
 }
 else {
   //Do Job
-  var g = new genRef.Generator(sourceFile, outputdir);
+  var g = new genRef.Generator(sourceFile, outputdir, outputServiceFileName);
   g.Debug = true;
   g.generateAPIClient();
 }
